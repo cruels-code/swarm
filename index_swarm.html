@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aether Drift (Three.js)</title>
+
+    <!-- Styles -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000000;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10;
+        }
+    </style>
+
+    <!-- Import Map for Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <!-- Dependencies -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import * as THREE from 'three';
+        import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+        import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+        import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+        import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
+
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // --- Inline Icons (Lucide replacements) ---
+        const Icon = ({ children, size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {children}
+            </svg>
+        );
+
+        const Play = (props) => <Icon {...props}><polygon points="5 3 19 12 5 21 5 3"></polygon></Icon>;
+        const Pause = (props) => <Icon {...props}><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></Icon>;
+        const RefreshCw = (props) => <Icon {...props}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></Icon>;
+        const Sliders = (props) => <Icon {...props}><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></Icon>;
+        const Sparkles = (props) => <Icon {...props}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></Icon>;
+        const Wind = (props) => <Icon {...props}><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2"></path><path d="M9.6 4.6A2 2 0 1 1 11 8H2"></path><path d="M12.6 19.4A2 2 0 1 0 14 16H2"></path></Icon>;
+        const Activity = (props) => <Icon {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></Icon>;
+        const Box = (props) => <Icon {...props}><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></Icon>;
+        const Zap = (props) => <Icon {...props}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></Icon>;
+        const Eye = (props) => <Icon {...props}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></Icon>;
+        const EyeOff = (props) => <Icon {...props}><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></Icon>;
+        const Waves = (props) => <Icon {...props}><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"></path></Icon>;
+
+        // --- Helper to create circle texture ---
+        const createCircleTexture = () => {
+            const size = 64;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Soft glow gradient
+            const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            grad.addColorStop(0.3, 'rgba(255, 255, 255, 0.8)');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+            ctx.fill();
+
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        };
+
+        const createSmokeTexture = () => {
+            const size = 128;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Irregular soft cloud shape with safe padding
+            const radius = (size / 2) * 0.8; // Reduce radius to ensure soft edges
+            const grad = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, radius);
+            grad.addColorStop(0, 'rgba(255, 255, 255, 0.04)');
+            grad.addColorStop(0.4, 'rgba(255, 255, 255, 0.01)');
+            grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+            ctx.fillStyle = grad;
+            ctx.clearRect(0, 0, size, size); // Clear first
+            ctx.fillRect(0, 0, size, size);
+
+            // Add some noise/irregularity
+            for (let i = 0; i < 20; i++) {
+                const x = Math.random() * size;
+                const y = Math.random() * size;
+                const r = Math.random() * size / 4;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,255,255,0.02)`;
+                ctx.fill();
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        };
+
+        const App = () => {
+            const containerRef = useRef(null);
+
+            // Three.js Refs
+            const sceneRef = useRef(null);
+            const cameraRef = useRef(null);
+            const rendererRef = useRef(null);
+            const composerRef = useRef(null);
+            const pointsRef = useRef(null);
+            const fogPointsRef = useRef(null); // Ref for fog
+            const fogMaterialRef = useRef(null); // Ref for fog shader
+            const boxHelperRef = useRef(null);
+            const bloomPassRef = useRef(null);
+            const afterimagePassRef = useRef(null);
+
+            const requestRef = useRef(0);
+            const particlesRef = useRef([]); // Stores physics data: { x, y, z, vx, vy, vz, size... }
+            const timeRef = useRef(0);
+
+            const ghostPathRef = useRef({ x: 0, y: 0, z: 0 });
+            const leadersRef = useRef([
+                { x: 0, y: 0, z: 0 },
+                { x: 0, y: 0, z: 0 }
+            ]);
+
+            const predatorsRef = useRef([
+                { x: 0, y: 800, z: 0, vx: 0, vy: 0, vz: 0, target: { x: 0, y: -800, z: 0 }, color: 0xff3333 },
+                { x: -500, y: 900, z: 500, vx: 0, vy: 0, vz: 0, target: { x: 500, y: -500, z: -500 }, color: 0xff3333 }
+            ]);
+            const predatorPointsRef = useRef(null);
+
+            const swarmStateRef = useRef({
+                mode: 'single',
+                lastSwitchTime: 0,
+                duration: 10000,
+                survivorIndex: 0
+            });
+
+            const [showBoundary, setShowBoundary] = useState(false);
+            const [showFeedback, setShowFeedback] = useState(true); // Default ON
+
+            const [isPlaying, setIsPlaying] = useState(true);
+            const [showControls, setShowControls] = useState(false);
+            const [fps, setFps] = useState(0);
+            const [debugMode, setDebugMode] = useState('Single Swarm');
+
+            // --- Configuration (Updated Defaults) ---
+            const [config, setConfig] = useState({
+                particleCount: 50000,
+                baseSpeed: 0.4,
+                flightSpeed: 0.5,
+                cubeSize: 1800,
+                waveFrequency: 0.003,
+                waveAmplitude: 1.2,
+                trailStrength: 0.46,
+                rotationSpeed: 0.05,
+                bloomStrength: 0.4,
+                noiseStrength: 1.5,
+                alignment: 0.2,
+                cohesionStrength: 0.4,
+                predatorFearRadius: 400,
+                predatorForce: 3.5
+            });
+
+            // --- Initialize Physics Particles ---
+            const initParticles = useCallback(() => {
+                const particles = [];
+                const spread = config.cubeSize * 0.8;
+
+                for (let i = 0; i < config.particleCount; i++) {
+                    particles.push({
+                        x: (Math.random() - 0.5) * spread,
+                        y: (Math.random() - 0.5) * spread,
+                        z: (Math.random() - 0.5) * spread,
+                        vx: (Math.random() - 0.5) * 0.5,
+                        vy: (Math.random() - 0.5) * 0.5,
+                        vz: (Math.random() - 0.5) * 0.5,
+                        size: Math.random() * 2.0 + 0.5,
+                        alpha: Math.random() * 0.5 + 0.2,
+                        phase: Math.random() * Math.PI * 2,
+                        speed: Math.random() * 0.4 + 0.6,
+                        groupId: i % 2,
+                    });
+                }
+                particlesRef.current = particles;
+
+                // Re-allocate geometry buffers if count changes
+                if (pointsRef.current) {
+                    const geometry = pointsRef.current.geometry;
+                    const positions = new Float32Array(config.particleCount * 3);
+                    const colors = new Float32Array(config.particleCount * 3);
+                    const sizes = new Float32Array(config.particleCount);
+
+                    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                    geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+                }
+            }, [config.particleCount, config.cubeSize]);
+
+            // --- Three.js Setup ---
+            useEffect(() => {
+                if (!containerRef.current) return;
+
+                // Scene
+                const scene = new THREE.Scene();
+                scene.fog = new THREE.FogExp2(0x000000, 0.0002);
+                sceneRef.current = scene;
+
+                // Camera
+                const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
+                camera.position.z = 2500;
+                cameraRef.current = camera;
+
+                // Renderer
+                const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.toneMapping = THREE.ReinhardToneMapping;
+                containerRef.current.appendChild(renderer.domElement);
+                rendererRef.current = renderer;
+
+                // Particles
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(config.particleCount * 3);
+                const colors = new Float32Array(config.particleCount * 3);
+                const sizes = new Float32Array(config.particleCount);
+
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+                // --- Standard Material (Fallback for Stability) ---
+                const material = new THREE.PointsMaterial({
+                    size: 8, // Fixed size for now
+                    vertexColors: true,
+                    map: createCircleTexture(),
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    transparent: true,
+                    opacity: 0.9
+                });
+
+                const points = new THREE.Points(geometry, material);
+                scene.add(points);
+                pointsRef.current = points;
+
+                // --- Volumetric Fog Particles ---
+                const fogCount = 2000; // High fidelity
+                const fogGeo = new THREE.BufferGeometry();
+                const fogPos = new Float32Array(fogCount * 3);
+                const fogSizes = new Float32Array(fogCount);
+
+                const fogSpread = config.cubeSize * 1.5; // Wider spread
+                for (let i = 0; i < fogCount; i++) {
+                    fogPos[i * 3] = (Math.random() - 0.5) * fogSpread;
+                    fogPos[i * 3 + 1] = (Math.random() - 0.5) * fogSpread;
+                    fogPos[i * 3 + 2] = (Math.random() - 0.5) * fogSpread;
+                    fogSizes[i] = 500 + Math.random() * 500; // Slightly larger/varied
+                }
+                fogGeo.setAttribute('position', new THREE.BufferAttribute(fogPos, 3));
+                // Store initial size to allow breathing if we want, or just static attr
+                fogGeo.setAttribute('size', new THREE.BufferAttribute(fogSizes, 1));
+
+                const fogMat = new THREE.ShaderMaterial({
+                    uniforms: {
+                        uTime: { value: 0 },
+                        uTex: { value: createSmokeTexture() },
+                        uLeaderPos: { value: [new THREE.Vector3(), new THREE.Vector3()] },
+                        uLeaderColor: { value: [new THREE.Color(0x00aaff), new THREE.Color(0xff00aa)] }
+                    },
+                    vertexShader: `
+                        attribute float size;
+                        varying float vIntensity;
+                        varying vec3 vColor;
+                        
+                        uniform float uTime;
+                        uniform vec3 uLeaderPos[2];
+                        uniform vec3 uLeaderColor[2];
+
+                        void main() {
+                            vec3 pos = position;
+                            
+                            // Organic Wave Movement
+                            // Rolling waves based on position and time
+                            float waveX = sin(uTime * 0.05 + pos.z * 0.002);
+                            float waveY = cos(uTime * 0.03 + pos.x * 0.001);
+                            
+                            pos.x += waveX * 30.0;
+                            pos.y += waveY * 30.0;
+                            pos.z += sin(uTime * 0.04 + pos.y * 0.002) * 20.0;
+
+                            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+                            gl_PointSize = size * (1200.0 / -mvPosition.z); // Slightly larger reference
+                            gl_Position = projectionMatrix * mvPosition;
+
+                            // Lighting Calculation (Soft Volumetric)
+                            vec3 worldPos = (modelMatrix * vec4(pos, 1.0)).xyz;
+                            
+                            // Soft Falloff using smoothstep
+                            // Radius of influence = 1500 units
+                            float lightRange = 1500.0;
+                            
+                            // Distance to Light A
+                            float distA = distance(worldPos, uLeaderPos[0]);
+                            float lightA = 1.0 - smoothstep(0.0, lightRange, distA); // 1.0 at center, 0.0 at edge
+
+                            // Distance to Light B
+                            float distB = distance(worldPos, uLeaderPos[1]);
+                            float lightB = 1.0 - smoothstep(0.0, lightRange, distB);
+
+                            // Base Ambient (Deep Space Blue/Grey)
+                            vec3 ambient = vec3(0.01, 0.01, 0.02); 
+
+                            // Mix Colors
+                            // Multiply light strength for impact
+                            vec3 colorA = uLeaderColor[0] * lightA * 0.8;
+                            vec3 colorB = uLeaderColor[1] * lightB * 0.8;
+                            
+                            vColor = ambient + colorA + colorB;
+                            vIntensity = 0.03; // More transparent individual particles due to higher count
+                        }
+                    `,
+                    fragmentShader: `
+                        uniform sampler2D uTex;
+                        varying float vIntensity;
+                        varying vec3 vColor;
+                        
+                        void main() {
+                            vec4 tex = texture2D(uTex, gl_PointCoord);
+                            gl_FragColor = vec4(vColor, tex.a * vIntensity);
+                        }
+                    `,
+                    transparent: true,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending
+                });
+
+                const fogPoints = new THREE.Points(fogGeo, fogMat);
+                scene.add(fogPoints);
+                fogPointsRef.current = fogPoints;
+                fogMaterialRef.current = fogMat;
+
+
+
+                // --- Predator Rendering ---
+                const predGeo = new THREE.BufferGeometry();
+                const predPos = new Float32Array(2 * 3); // 2 predators
+                predGeo.setAttribute('position', new THREE.BufferAttribute(predPos, 3));
+                const predMat = new THREE.PointsMaterial({
+                    color: 0xff3333,
+                    size: 80,
+                    transparent: true,
+                    opacity: 0.9,
+                    blending: THREE.AdditiveBlending,
+                    map: createCircleTexture(),
+                    depthWrite: false
+                });
+                const predPoints = new THREE.Points(predGeo, predMat);
+                predPoints.visible = false; // Hide predators
+                scene.add(predPoints);
+                predatorPointsRef.current = predPoints;
+
+                // Boundary Helper
+                const boxGeom = new THREE.BoxGeometry(config.cubeSize, config.cubeSize, config.cubeSize);
+                const boxHelper = new THREE.LineSegments(
+                    new THREE.EdgesGeometry(boxGeom),
+                    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.15 })
+                );
+                boxHelper.visible = false;
+                scene.add(boxHelper);
+                boxHelperRef.current = boxHelper;
+
+                // Post Processing
+                const renderScene = new RenderPass(scene, camera);
+
+                const bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+                bloomPass.threshold = 0.5;
+                bloomPass.strength = config.bloomStrength;
+                bloomPass.radius = 0.5;
+                bloomPass.radius = 0.5;
+                bloomPassRef.current = bloomPass;
+
+                const afterimagePass = new AfterimagePass();
+                afterimagePass.uniforms["damp"].value = 0.7;
+                afterimagePass.enabled = false;
+                afterimagePassRef.current = afterimagePass;
+
+                const composer = new EffectComposer(renderer);
+                composer.addPass(renderScene);
+                composer.addPass(afterimagePass);
+                composer.addPass(bloomPass);
+                composerRef.current = composer;
+
+                // Handle Resize
+                const handleResize = () => {
+                    const width = window.innerWidth;
+                    const height = window.innerHeight;
+                    camera.aspect = width / height;
+                    camera.updateProjectionMatrix();
+                    renderer.setSize(width, height);
+                    composer.setSize(width, height);
+                };
+                window.addEventListener('resize', handleResize);
+
+                initParticles();
+
+                return () => {
+                    window.removeEventListener('resize', handleResize);
+                    if (renderer.domElement && containerRef.current) {
+                        containerRef.current.removeChild(renderer.domElement);
+                    }
+                    renderer.dispose();
+                };
+            }, []);
+
+            // --- Update Config Effects ---
+            useEffect(() => {
+                if (initParticles) initParticles(); // Reset if count changes
+            }, [config.particleCount]);
+
+            useEffect(() => {
+                if (bloomPassRef.current) {
+                    bloomPassRef.current.strength = config.bloomStrength;
+                }
+                if (boxHelperRef.current) {
+                    // Re-create box helper if size changes significantly or just scale it? scaling is easier.
+                    const scale = config.cubeSize;
+                    // But BoxGeometry was created with initial size. Let's just scale the object.
+                    // The initial geo was created with `config.cubeSize` at that moment. 
+                    // Better to store reference to box geometry or just fully re-create if needed.
+                    // For now, simpler to allow visual mismatch or update scale relative to initial.
+                    // Let's just update visibility.
+                }
+                if (afterimagePassRef.current) {
+                    // damp value: higher = more trails. 
+                    // config.trailStrength is 0.01 to 0.5. 
+                    // In Three.js Afterimage, damp 0.96 is heavy trails, 0.5 is short.
+                    // Let's map 0.0-0.5 to 0.5-0.95 roughly.
+                    afterimagePassRef.current.uniforms["damp"].value = 0.5 + config.trailStrength;
+                }
+                if (afterimagePassRef.current) {
+                    // damp value: higher = more trails. 
+                    // config.trailStrength is 0.01 to 0.5. 
+                    // In Three.js Afterimage, damp 0.96 is heavy trails, 0.5 is short.
+                    // Let's map 0.0-0.5 to 0.5-0.95 roughly.
+                    afterimagePassRef.current.uniforms["damp"].value = 0.5 + config.trailStrength;
+                }
+            }, [config]);
+
+            useEffect(() => {
+                if (boxHelperRef.current) boxHelperRef.current.visible = showBoundary;
+            }, [showBoundary]);
+
+            useEffect(() => {
+                if (afterimagePassRef.current) afterimagePassRef.current.enabled = showFeedback;
+            }, [showFeedback]);
+
+
+            // --- Main Animation Loop ---
+            const animate = useCallback(() => {
+                if (!isPlaying) return;
+
+                const now = performance.now();
+
+                // --- Predator Logic (Fly-Through Waypoints) ---
+                const predators = predatorsRef.current;
+                const predSpeed = 2.0 * config.flightSpeed; // Explicitly 2x speed
+                const boundarySize = config.cubeSize;
+
+                predators.forEach((pred, idx) => {
+                    // 1. Check distance to current target
+                    const dx = pred.target.x - pred.x;
+                    const dy = pred.target.y - pred.y;
+                    const dz = pred.target.z - pred.z;
+                    const distToTarget = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+                    // 2. Re-Target if close
+                    if (distToTarget < 200) {
+                        // Pick random point in full boundary
+                        pred.target.x = (Math.random() - 0.5) * boundarySize;
+                        pred.target.y = (Math.random() - 0.5) * boundarySize;
+                        pred.target.z = (Math.random() - 0.5) * boundarySize;
+                    }
+
+                    // 3. Steering (Seek Target Aggressively)
+                    // Normalize direction
+                    const nx = dx / distToTarget;
+                    const ny = dy / distToTarget;
+                    const nz = dz / distToTarget;
+
+                    // Direct velocity set (less floaty, more aggressive) to ensure speed
+                    // Blend current velocity for *some* inertia, but mostly direct
+                    const turnRate = 0.05;
+                    pred.vx += (nx * predSpeed - pred.vx) * turnRate;
+                    pred.vy += (ny * predSpeed - pred.vy) * turnRate;
+                    pred.vz += (nz * predSpeed - pred.vz) * turnRate;
+
+                    // 4. Force Speed
+                    const currentSpeed = Math.sqrt(pred.vx * pred.vx + pred.vy * pred.vy + pred.vz * pred.vz);
+                    if (currentSpeed > 0) {
+                        pred.vx = (pred.vx / currentSpeed) * predSpeed;
+                        pred.vy = (pred.vy / currentSpeed) * predSpeed;
+                        pred.vz = (pred.vz / currentSpeed) * predSpeed;
+                    }
+
+                    // 5. Move
+                    pred.x += pred.vx;
+                    pred.y += pred.vy;
+                    pred.z += pred.vz;
+
+                    // Simple Hard Boundary (Bounce) - just in case they overshoot massively
+                    const limit = boundarySize * 1.2;
+                    if (Math.abs(pred.x) > limit || Math.abs(pred.y) > limit || Math.abs(pred.z) > limit) {
+                        // Force target back to center if out of bounds
+                        pred.target.x = 0;
+                        pred.target.y = 0;
+                        pred.target.z = 0;
+                    }
+                });
+
+
+
+                // Update Predator Visuals
+                if (predatorPointsRef.current) {
+                    const pos = predatorPointsRef.current.geometry.attributes.position;
+                    pos.setXYZ(0, predators[0].x, predators[0].y, predators[0].z);
+                    pos.setXYZ(1, predators[1].x, predators[1].y, predators[1].z);
+                    pos.needsUpdate = true;
+                }
+
+                const dt = 0.005 * config.flightSpeed;
+                timeRef.current += dt;
+                const t = timeRef.current;
+
+                // --- 1. Update Camera (Orbit) ---
+                if (cameraRef.current) {
+                    const camTime = t * 0.6; // Speed up orbit (3x)
+                    const radius = 2500;
+                    cameraRef.current.position.x = Math.sin(camTime * 0.3) * radius;
+                    cameraRef.current.position.z = Math.cos(camTime * 0.3) * radius;
+                    cameraRef.current.position.y = Math.sin(camTime * 0.1) * 500;
+                    cameraRef.current.lookAt(0, 0, 0);
+                }
+
+                // --- 2. Swarm State Logic (IDENTICAL) ---
+                // Lifetime increased to 90 seconds as requested
+                // --- 2. Swarm State Logic ---
+                if (now - swarmStateRef.current.lastSwitchTime > swarmStateRef.current.duration) {
+                    const currentState = swarmStateRef.current;
+
+                    // Transition Logic
+                    // Random chance to Toggle Split/Single
+                    const roll = Math.random();
+                    if (currentState.mode === 'single') {
+                        currentState.mode = 'split';
+                        currentState.duration = 30000 + Math.random() * 30000;
+                        setDebugMode('Splitting Swarms');
+                    } else {
+                        currentState.mode = 'single';
+                        currentState.duration = 30000 + Math.random() * 30000;
+                        setDebugMode('Merging Swarms');
+                    }
+
+                    currentState.lastSwitchTime = now;
+                }
+
+                // --- 3. Leader Logic (IDENTICAL) ---
+                const halfCube = config.cubeSize / 2;
+                const safeZone = halfCube * 0.8;
+                let ghostX = Math.sin(t * 0.8) * (safeZone * 0.9) + Math.sin(t * 1.3) * 100;
+                let ghostY = Math.cos(t * 0.6) * (safeZone * 0.8) + Math.cos(t * 1.7) * 100;
+                let ghostZ = Math.sin(t * 0.9) * (safeZone * 0.9);
+
+                ghostX = Math.max(-safeZone, Math.min(safeZone, ghostX));
+                ghostY = Math.max(-safeZone, Math.min(safeZone, ghostY));
+                ghostZ = Math.max(-safeZone, Math.min(safeZone, ghostZ));
+
+                ghostPathRef.current = { x: ghostX, y: ghostY, z: ghostZ };
+
+                if (swarmStateRef.current.mode === 'single') {
+                    leadersRef.current[0] = { x: ghostX, y: ghostY, z: ghostZ };
+                    leadersRef.current[1] = { x: ghostX, y: ghostY, z: ghostZ };
+                } else {
+                    // New "Meeting/Play" Mode: Vertical Helixes
+                    // Diameter 300 -> Radius 150
+                    // Fly upwards -> +Y movement (interpreting 20 units as speed/offset over time)
+
+                    const helixRadius = 150;
+                    const upwardSpeed = 20.0; // Units per second approx
+                    // Using timeRef.current (t)
+
+                    // We need a base Y that moves up. 
+                    // Let's make them spiral around a shared center that drifts up.
+                    // To keep them "on screen", we might wrap the Y or oscillate, but request said "fly upwards".
+                    // Let's assume they spiral up relative to the ghost path which is roughly center?
+                    // Or just spiral up from 0 to infinity?
+                    // "Fly upwards about 20 units when they meet" -> This might mean a short burst or a continuous drift?
+                    // "Fly upwards... when they meet and 'play'" implies a continuous action during this state.
+                    // Let's add a continuous upward drift to the ghostY center.
+
+                    // Center of helix pair:
+                    const centerX = 0;
+                    const centerZ = 0;
+                    // Vertical rise:
+                    // We need to know how long we've been in split mode to calculate rise offset.
+                    const modeDuration = (now - swarmStateRef.current.lastSwitchTime) / 1000; // seconds
+                    const centerY = ghostY + (modeDuration * upwardSpeed);
+
+                    const helixSpeed = 2.0; // Rotation speed
+
+                    leadersRef.current[0] = {
+                        x: centerX + Math.cos(t * helixSpeed) * helixRadius,
+                        y: centerY,
+                        z: centerZ + Math.sin(t * helixSpeed) * helixRadius
+                    };
+
+                    leadersRef.current[1] = {
+                        x: centerX + Math.cos(t * helixSpeed + Math.PI) * helixRadius, // Opposing (180 deg / PI shift)
+                        y: centerY,
+                        z: centerZ + Math.sin(t * helixSpeed + Math.PI) * helixRadius
+                    };
+                }
+
+                // --- 4. Particle Physics & Buffer Update ---
+                if (pointsRef.current) {
+                    const geometry = pointsRef.current.geometry;
+                    const posAttr = geometry.attributes.position;
+                    const colAttr = geometry.attributes.color;
+                    const sizeAttr = geometry.attributes.size;
+
+                    const particles = particlesRef.current;
+                    const flowFreq = config.waveFrequency;
+                    const flowAmp = config.waveAmplitude * 0.05;
+                    const cohesionForce = 0.0001 * config.cohesionStrength;
+                    const alignmentForce = 0.0001 * (config.alignment * 10.0);
+                    const repulsionRadius = 150;
+                    const noiseFreq = flowFreq * 8.0;
+                    const noiseT = t * 2.5;
+                    const noiseStr = config.noiseStrength;
+
+                    const L0 = leadersRef.current[0];
+                    const L1 = leadersRef.current[1];
+                    const isSplit = swarmStateRef.current.mode === 'split';
+
+                    const boundaryLimit = halfCube;
+                    const boundaryMargin = 100;
+                    const wallForce = 0.02 * config.flightSpeed;
+                    const waveSpeed = 2.0;
+                    const waveFreq = 0.008;
+
+                    const tempColor = new THREE.Color();
+
+                    for (let i = 0; i < particles.length; i++) {
+                        const p = particles[i];
+
+                        // Physics - Target Selection (Hoisted)
+                        let target;
+                        let avoidTarget = null;
+
+                        // --- NORMAL PHYSICS ---
+                        // Physics - Target Selection
+                        if (isSplit) {
+                            if (p.groupId === 0) { target = L0; avoidTarget = L1; }
+                            else { target = L1; avoidTarget = L0; }
+                        } else { target = L0; }
+
+                        // Forces
+                        const dx = target.x - p.x;
+                        const dy = target.y - p.y;
+                        const dz = target.z - p.z;
+
+                        // Cohesion
+                        p.vx += dx * cohesionForce * p.speed;
+                        p.vy += dy * cohesionForce * p.speed;
+                        p.vz += dz * cohesionForce * p.speed;
+
+                        // Recalculate dist for shared logic
+                        // Recalculate dist for shared logic
+                        if (!target) target = isSplit ? (p.groupId === 0 ? L0 : L1) : L0;
+
+                        const distSq = dx * dx + dy * dy + dz * dz;
+
+                        // Alignment (Move towards target's movement direction - approximated by target velocity or just center tangent)
+                        // For this simple leader setup, we can align tangent to the center
+                        // Or simply align with current velocity to simulate inertia + flock alignment
+                        // Let's add a "pull" towards the leader's inherent direction (spiral)
+                        // Since we don't calculate leader velocity explicitly frame-by-frame here easily without storage,
+                        // we can just use the config.alignment to influence dampening or "forward" motion.
+                        // User asked for "Alignment 20%". Let's interpret as blending current velocity with ideal direction.
+                        // Ideal direction is normalized dx,dy,dz. 
+                        const dist = Math.sqrt(distSq);
+                        if (dist > 0.1) {
+                            const nx = dx / dist;
+                            const ny = dy / dist;
+                            const nz = dz / dist;
+                            // Align velocity with vector to target
+                            p.vx += nx * alignmentForce;
+                            p.vy += ny * alignmentForce;
+                            p.vz += nz * alignmentForce;
+                        }
+
+                        // Repulsion
+                        if (distSq < repulsionRadius * repulsionRadius) {
+                            const repulsionStrength = 0.002;
+                            p.vx -= dx * repulsionStrength;
+                            p.vy -= dy * repulsionStrength;
+                            p.vz -= dz * repulsionStrength;
+                        }
+
+                        // Avoidance
+                        if (avoidTarget) {
+                            const adx = avoidTarget.x - p.x;
+                            const ady = avoidTarget.y - p.y;
+                            const adz = avoidTarget.z - p.z;
+                            const avoidDistSq = adx * adx + ady * ady + adz * adz;
+                            if (avoidDistSq < 160000) {
+                                const avoidStrength = 0.0005;
+                                p.vx -= adx * avoidStrength;
+                                p.vy -= ady * avoidStrength;
+                                p.vz -= adz * avoidStrength;
+                            }
+                        }
+
+                        // Predator Avoidance
+                        for (let k = 0; k < predators.length; k++) {
+                            const pred = predators[k];
+                            const pdx = pred.x - p.x;
+                            const pdy = pred.y - p.y;
+                            const pdz = pred.z - p.z;
+                            const pDistSq = pdx * pdx + pdy * pdy + pdz * pdz;
+                            const fearRad = config.predatorFearRadius;
+
+                            if (pDistSq < fearRad * fearRad) {
+                                // Intense scatter force
+                                const fearStr = 0.01 * config.predatorForce; // Strong repulse
+                                p.vx -= pdx * fearStr;
+                                p.vy -= pdy * fearStr;
+                                p.vz -= pdz * fearStr;
+
+                                // Panic Jitter
+                                p.vx += (Math.random() - 0.5) * 0.5;
+                                p.vy += (Math.random() - 0.5) * 0.5;
+                                p.vz += (Math.random() - 0.5) * 0.5;
+                            }
+                        }
+
+                        // Boundary
+                        if (p.x < -boundaryLimit + boundaryMargin) p.vx += wallForce;
+                        if (p.x > boundaryLimit - boundaryMargin) p.vx -= wallForce;
+                        if (p.y < -boundaryLimit + boundaryMargin) p.vy += wallForce;
+                        if (p.y > boundaryLimit - boundaryMargin) p.vy -= wallForce;
+                        if (p.z < -boundaryLimit + boundaryMargin) p.vz += wallForce;
+                        if (p.z > boundaryLimit - boundaryMargin) p.vz -= wallForce;
+
+                        // Noise/Wind
+                        const windX = Math.sin(p.y * flowFreq + t) + Math.sin(p.z * flowFreq * 1.3 + t);
+                        const windY = Math.cos(p.z * flowFreq + t) + Math.cos(p.x * flowFreq * 1.1 + t);
+                        const windZ = Math.sin(p.x * flowFreq + t) + Math.sin(p.y * flowFreq * 1.2 + t);
+
+                        const nX = Math.sin(p.z * noiseFreq + noiseT) * Math.cos(p.y * noiseFreq * 0.8 + noiseT);
+                        const nY = Math.sin(p.x * noiseFreq + noiseT * 1.1) * Math.cos(p.z * noiseFreq * 0.9 + noiseT);
+                        const nZ = Math.sin(p.y * noiseFreq + noiseT * 0.9) * Math.cos(p.x * noiseFreq * 1.2 + noiseT);
+
+                        p.vx += (windX + nX * noiseStr) * flowAmp;
+                        p.vy += (windY + nY * noiseStr) * flowAmp;
+                        p.vz += (windZ + nZ * noiseStr) * flowAmp;
+
+                        // Drag & Update
+                        const drag = 0.96;
+                        p.vx *= drag; p.vy *= drag; p.vz *= drag;
+                        p.x += p.vx * config.flightSpeed;
+                        p.y += p.vy * config.flightSpeed;
+                        p.z += p.vz * config.flightSpeed;
+
+                        // --- Visual Update (Buffer) ---
+                        posAttr.setXYZ(i, p.x, p.y, p.z);
+
+                        // Size Calculation (for shader)
+                        sizeAttr.setX(i, p.size * 25); // Scaling factor for visual size
+
+                        // Color Calculation (Emissive Logic)
+                        const leader = (isSplit && p.groupId === 1) ? L1 : L0;
+                        const ldx = p.x - leader.x;
+                        const ldy = p.y - leader.y;
+                        const ldz = p.z - leader.z;
+                        const distToLeader = Math.sqrt(ldx * ldx + ldy * ldy + ldz * ldz);
+                        const wave = Math.sin(distToLeader * waveFreq - t * waveSpeed);
+
+                        let hueBase = 220;
+                        if (isSplit) hueBase = p.groupId === 0 ? 190 : 280; // Electric Blue (190) & Neon Purple (280)
+                        const hue = hueBase + wave * 15;
+                        const lightness = 0.5 + wave * 0.2; // 0-1 range for HSL 
+
+                        // Convert HSL to RGB for Three.js
+                        // Three.js HSL is hue 0-1, saturation 0-1, lightness 0-1
+                        tempColor.setHSL(hue / 360, 1.0, lightness);
+                        colAttr.setXYZ(i, tempColor.r, tempColor.g, tempColor.b);
+                    }
+
+                    posAttr.needsUpdate = true;
+                    colAttr.needsUpdate = true;
+                    sizeAttr.needsUpdate = true;
+                }
+
+
+                // --- 6. Update Fog Uniforms ---
+                if (fogMaterialRef.current) {
+                    fogMaterialRef.current.uniforms.uTime.value = t;
+
+                    // Update Leader Positions
+                    const L0 = leadersRef.current[0];
+                    const L1 = leadersRef.current[1];
+
+                    // Three.js Vector3 update
+                    fogMaterialRef.current.uniforms.uLeaderPos.value[0].set(L0.x, L0.y, L0.z);
+                    fogMaterialRef.current.uniforms.uLeaderPos.value[1].set(L1.x, L1.y, L1.z);
+
+                    // Update Colors based on swarm state
+                    // If single: Blue-ish (LeadersRef[0] and [1] are same)
+                    // If split: One is Blue, One is Pink
+                    if (swarmStateRef.current.mode === 'split') {
+                        fogMaterialRef.current.uniforms.uLeaderColor.value[0].setHSL(190 / 360, 1.0, 0.6); // Electric Blue
+                        fogMaterialRef.current.uniforms.uLeaderColor.value[1].setHSL(280 / 360, 1.0, 0.6); // Neon Purple
+                    } else {
+                        fogMaterialRef.current.uniforms.uLeaderColor.value[0].setHSL(220 / 360, 1.0, 0.6); // Blue
+                        fogMaterialRef.current.uniforms.uLeaderColor.value[1].setHSL(220 / 360, 1.0, 0.6); // Blue
+                    }
+                }
+
+                // --- 5. Render ---
+                if (composerRef.current) {
+                    composerRef.current.render();
+                }
+
+                // FPS
+                const delta = performance.now() - now;
+                if (Math.random() > 0.95) setFps(Math.max(0, Math.round(1000 / (delta + 0.1))));
+
+                requestRef.current = requestAnimationFrame(animate);
+            }, [config, isPlaying]);
+
+            useEffect(() => {
+                requestRef.current = requestAnimationFrame(animate);
+                return () => cancelAnimationFrame(requestRef.current);
+            }, [animate]);
+
+
+            const handleRestart = () => {
+                initParticles();
+            };
+
+            return (
+                <div className="relative w-full h-screen bg-black text-white overflow-hidden font-sans">
+
+                    <div ref={containerRef} id="canvas-container" />
+
+                    <div className={`absolute top-6 left-6 transition-opacity duration-500 z-50 ${showControls ? 'opacity-100' : 'opacity-0 hover:opacity-100'}`}>
+                        <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-6 shadow-2xl w-[320px] max-h-[90vh] overflow-y-auto">
+
+                            <div className="flex justify-between items-center mb-6">
+                                <div>
+                                    <h1 className="text-xl font-bold bg-gradient-to-r from-blue-200 via-purple-300 to-pink-200 bg-clip-text text-transparent">Aether Engine 3D</h1>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <p className="text-xs text-gray-400">{config.particleCount} Entities • {fps}fps</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowControls(!showControls)} className="p-2 hover:bg-white/10 rounded-full transition-colors">
+                                    <Sliders size={18} className="text-gray-300" />
+                                </button>
+                            </div>
+
+                            <div className="mb-4 bg-white/5 rounded-lg p-3">
+                                <div className="flex items-center justify-between text-xs text-blue-200 mb-1">
+                                    <span className="flex items-center gap-1"><Activity size={10} /> Swarm Status</span>
+                                    <span className="uppercase tracking-wider font-bold">{debugMode}</span>
+                                </div>
+                                <div className="w-full bg-gray-800 h-1 rounded-full overflow-hidden">
+                                    <div className={`h-full ${debugMode.includes('Single') ? 'bg-blue-500' : 'bg-pink-500'} w-full animate-pulse opacity-50`}></div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="flex justify-between gap-3">
+                                    <div className="flex-1 flex justify-between items-center bg-white/5 p-3 rounded-lg border border-white/5">
+                                        <span className="flex items-center gap-2 text-xs text-gray-400">
+                                            {showBoundary ? <Eye size={16} className="text-emerald-400" /> : <EyeOff size={16} />}
+                                            Bounds
+                                        </span>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" checked={showBoundary} onChange={(e) => setShowBoundary(e.target.checked)} className="sr-only peer" />
+                                            <div className="w-7 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                                        </label>
+                                    </div>
+
+                                    <div className="flex-1 flex justify-between items-center bg-white/5 p-3 rounded-lg border border-white/5">
+                                        <span className="flex items-center gap-2 text-xs text-gray-400">
+                                            <Waves size={16} className={showFeedback ? "text-purple-400" : ""} />
+                                            Trails
+                                        </span>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input type="checkbox" checked={showFeedback} onChange={(e) => setShowFeedback(e.target.checked)} className="sr-only peer" />
+                                            <div className="w-7 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-purple-500"></div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span className="flex items-center gap-2"><Box size={12} /> Boundary Size</span>
+                                        <span>{config.cubeSize}px</span>
+                                    </div>
+                                    <input type="range" min="200" max="2000" step="50" value={config.cubeSize} onChange={(e) => setConfig({ ...config, cubeSize: parseInt(e.target.value) })} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-emerald-400" />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span className="flex items-center gap-2"><Zap size={12} /> Flight Speed</span>
+                                        <span>x{config.flightSpeed.toFixed(1)}</span>
+                                    </div>
+                                    <input type="range" min="0.1" max="3.0" step="0.1" value={config.flightSpeed} onChange={(e) => setConfig({ ...config, flightSpeed: parseFloat(e.target.value) })} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-yellow-400" />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span className="flex items-center gap-2"><Sparkles size={12} /> Bloom Intensity</span>
+                                        <span>{Math.round(config.bloomStrength * 100)}%</span>
+                                    </div>
+                                    <input type="range" min="0" max="4.0" step="0.1" value={config.bloomStrength} onChange={(e) => setConfig({ ...config, bloomStrength: parseFloat(e.target.value) })} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-white" />
+                                </div>
+
+
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span className="flex items-center gap-2"><Activity size={12} /> Trails Persistance</span>
+                                        <span>{Math.round(config.trailStrength * 100)}%</span>
+                                    </div>
+                                    <input type="range" min="0.01" max="0.48" step="0.01" value={config.trailStrength} onChange={(e) => setConfig({ ...config, trailStrength: parseFloat(e.target.value) })} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-400" />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span className="flex items-center gap-2"><Wind size={12} /> Wind Noise</span>
+                                        <span>{config.noiseStrength.toFixed(2)}</span>
+                                    </div>
+                                    <input type="range" min="0" max="3.0" step="0.1" value={config.noiseStrength} onChange={(e) => setConfig({ ...config, noiseStrength: parseFloat(e.target.value) })} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-teal-400" />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span className="flex items-center gap-2"><Activity size={12} /> Cohesion Strength</span>
+                                        <span>{config.cohesionStrength.toFixed(1)}</span>
+                                    </div>
+                                    <input type="range" min="0.1" max="2.0" step="0.1" value={config.cohesionStrength} onChange={(e) => setConfig({ ...config, cohesionStrength: parseFloat(e.target.value) })} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-400" />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span className="flex items-center gap-2"><Activity size={12} /> Swarm Size</span>
+                                        <span>{config.particleCount}</span>
+                                    </div>
+                                    <input type="range" min="1000" max="100000" step="1000" value={config.particleCount} onChange={(e) => setConfig({ ...config, particleCount: parseInt(e.target.value) })} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400" />
+                                </div>
+
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span>Cohesion Strength</span>
+                                        <span>{config.baseSpeed.toFixed(1)}</span>
+                                    </div>
+                                    <input type="range" min="0.1" max="3.0" step="0.1" value={config.baseSpeed} onChange={(e) => setConfig({ ...config, baseSpeed: parseFloat(e.target.value) })} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-400" />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-xs text-gray-400">
+                                        <span>Swarm Size</span>
+                                        <span>{config.particleCount}</span>
+                                    </div>
+                                    <input type="range" min="1000" max="100000" step="1000" value={config.particleCount} onChange={(e) => { setConfig({ ...config, particleCount: parseInt(e.target.value) }) }} className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-400" />
+                                </div>
+
+                                <div className="flex gap-3 pt-2">
+                                    <button onClick={() => setIsPlaying(!isPlaying)} className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 active:bg-white/5 py-2 rounded-lg text-sm font-medium transition-all">
+                                        {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+                                        {isPlaying ? 'Pause' : 'Resume'}
+                                    </button>
+                                    <button onClick={handleRestart} className="flex items-center justify-center p-2 bg-white/10 hover:bg-white/20 active:bg-white/5 rounded-lg transition-all" title="Reset Swarm">
+                                        <RefreshCw size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>
